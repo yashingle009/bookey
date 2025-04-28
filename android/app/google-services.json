@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "686857392136",
+    "project_id": "bookey-6618c",
+    "storage_bucket": "bookey-6618c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:686857392136:android:c92522663fa6f9ca8641bd",
+        "android_client_info": {
+          "package_name": "com.example.bookey_flutter"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCxKOANIcwWhU4VaZTeu5cdDwVRzoebJF0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,98 @@
+{
+  "project_info": {
+    "project_number": "20514091996",
+    "firebase_url": "https://consultme-8bd0b-default-rtdb.firebaseio.com",
+    "project_id": "consultme-8bd0b",
+    "storage_bucket": "consultme-8bd0b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:20514091996:android:5321eb0e386f7e36e15519",
+        "android_client_info": {
+          "package_name": "com.example.consultsphere"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "20514091996-nn07ffsjbfrp08qbsrel192dprmvdti3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCtemphLsAlSE6ZDnaZnRvukQkHp7LaFrQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "20514091996-nn07ffsjbfrp08qbsrel192dprmvdti3.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:20514091996:android:b80d8842ae5531aee15519",
+        "android_client_info": {
+          "package_name": "com.example.myapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "20514091996-nn07ffsjbfrp08qbsrel192dprmvdti3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCtemphLsAlSE6ZDnaZnRvukQkHp7LaFrQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "20514091996-nn07ffsjbfrp08qbsrel192dprmvdti3.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:20514091996:android:3dedd68400600b7de15519",
+        "android_client_info": {
+          "package_name": "com.yash.consultme"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "20514091996-nn07ffsjbfrp08qbsrel192dprmvdti3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCtemphLsAlSE6ZDnaZnRvukQkHp7LaFrQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "20514091996-nn07ffsjbfrp08qbsrel192dprmvdti3.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
