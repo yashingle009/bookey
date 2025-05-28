@@ -1,3 +1,4 @@
 {
-    "avdmanager.sdkPath": "c:\\flutter"
+    "avdmanager.sdkPath": "c:\\flutter",
+    "zencoder.enableRepoIndexing": true
 }

@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
+import '../models/notification_item.dart';
 
 class FirestoreService {
   static final FirestoreService _instance = FirestoreService._internal();
@@ -39,22 +40,21 @@ class FirestoreService {
       // Create a collection of sample books if the collection is empty or there's a permission error
       createSampleBooksIfNeeded();
 
-      // Only show books with status 'available'
+      // Use a simpler query that doesn't require a composite index
+      // Just get all books and filter in the app if needed
       return booksCollection
-          .where('status', isEqualTo: 'available')
           .orderBy('createdAt', descending: true)
           .snapshots();
     } catch (e) {
       debugPrint('Error getting all books: $e');
 
-      // If there's an index error, fall back to a simpler query without filtering
+      // If there's still an error, try an even simpler query
       if (e.toString().contains('FAILED_PRECONDITION') ||
           e.toString().contains('requires an index')) {
-        debugPrint('Falling back to query without filtering by status');
+        debugPrint('Falling back to query without ordering');
         try {
-          return booksCollection
-              .orderBy('createdAt', descending: true)
-              .snapshots();
+          // Most basic query possible - no ordering, no filtering
+          return booksCollection.snapshots();
         } catch (innerError) {
           debugPrint('Error in fallback query: $innerError');
           return Stream<QuerySnapshot>.empty();
@@ -64,6 +64,15 @@ class FirestoreService {
       // Return an empty stream in case of error
       return Stream<QuerySnapshot>.empty();
     }
+  }
+
+  // Filter books by status (client-side filtering)
+  List<DocumentSnapshot> filterBooksByStatus(List<DocumentSnapshot> books, String status) {
+    return books.where((doc) {
+      final data = doc.data() as Map<String, dynamic>?;
+      if (data == null) return false;
+      return data['status'] == status;
+    }).toList();
   }
 
   // Get books by condition
@@ -209,18 +218,34 @@ class FirestoreService {
   }
 
   // Upload image to Firebase Storage
-  Future<String?> uploadBookImage(XFile imageFile) async {
+  Future<String?> uploadBookImage(XFile imageFile, {Function(double)? onProgress}) async {
     try {
       if (!isUserLoggedIn) {
         throw Exception('User not logged in');
       }
 
-      // Use a simpler path structure to avoid nested folders which might cause issues
+      // Get user ID to include in the image path
+      final userId = currentUserId!;
+
+      // Create a unique filename with timestamp and user ID
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
       final uuid = const Uuid().v4();
-      final storageRef = _storage.ref().child('book_images/$uuid.jpg');
+      final filename = '${userId}_${timestamp}_$uuid.jpg';
+
+      // Use a simpler path structure to avoid nested folders which might cause issues
+      // Just use the root 'images' folder instead of nested paths
+      final storageRef = _storage.ref().child('images/$filename');
+
+      debugPrint('Attempting to upload to: ${storageRef.fullPath}');
 
       // Get the file data as bytes to avoid file system issues on web
       final Uint8List imageData = await imageFile.readAsBytes();
+
+      // Check image size and compress if needed
+      if (imageData.length > 5 * 1024 * 1024) { // 5MB limit
+        debugPrint('Image is too large (${(imageData.length / 1024 / 1024).toStringAsFixed(2)}MB). Consider compressing it.');
+        // In a real app, you would compress the image here
+      }
 
       // Upload the image data
       debugPrint('Starting image upload to Firebase Storage...');
@@ -228,7 +253,12 @@ class FirestoreService {
         imageData,
         SettableMetadata(
           contentType: 'image/jpeg',
-          customMetadata: {'uuid': uuid},
+          customMetadata: {
+            'uuid': uuid,
+            'userId': userId,
+            'uploadTime': DateTime.now().toIso8601String(),
+            'originalFilename': imageFile.name,
+          },
         ),
       );
 
@@ -236,6 +266,11 @@ class FirestoreService {
       uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
         final progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
         debugPrint('Upload progress: $progress%');
+
+        // Call the progress callback if provided
+        if (onProgress != null) {
+          onProgress(progress);
+        }
       });
 
       // Wait for the upload to complete
@@ -245,6 +280,7 @@ class FirestoreService {
       // Get the download URL
       final downloadUrl = await snapshot.ref.getDownloadURL();
       debugPrint('Image uploaded successfully. URL: $downloadUrl');
+
       return downloadUrl;
     } catch (e) {
       debugPrint('Error uploading book image: $e');
@@ -253,33 +289,35 @@ class FirestoreService {
       if (e.toString().contains('object-not-found')) {
         debugPrint('The specified storage bucket or path does not exist.');
         debugPrint('Make sure your Firebase Storage rules allow write access.');
+
+        // Try with an even simpler path
+        try {
+          debugPrint('Trying with root path...');
+          final uuid = const Uuid().v4();
+          final storageRef = _storage.ref().child('$uuid.jpg');
+
+          final Uint8List imageData = await imageFile.readAsBytes();
+          final uploadTask = storageRef.putData(
+            imageData,
+            SettableMetadata(contentType: 'image/jpeg'),
+          );
+
+          final snapshot = await uploadTask;
+          final url = await snapshot.ref.getDownloadURL();
+          debugPrint('Success with root path. URL: $url');
+          return url;
+        } catch (rootPathError) {
+          debugPrint('Root path upload also failed: $rootPathError');
+        }
       } else if (e.toString().contains('unauthorized')) {
         debugPrint('Firebase Storage permission denied. Check your security rules.');
       } else if (e.toString().contains('canceled')) {
         debugPrint('Upload was canceled.');
+      } else if (e.toString().contains('network')) {
+        debugPrint('Network error. Check your internet connection.');
       }
 
-      // For web platform, try an alternative approach
-      if (kIsWeb) {
-        try {
-          debugPrint('Trying alternative upload method for web...');
-          final uuid = const Uuid().v4();
-          final storageRef = _storage.ref().child('images/$uuid.jpg');
-
-          final Uint8List imageData = await imageFile.readAsBytes();
-          final uploadTask = storageRef.putData(imageData);
-          final snapshot = await uploadTask;
-          return await snapshot.ref.getDownloadURL();
-        } catch (webError) {
-          debugPrint('Alternative upload method also failed: $webError');
-
-          // As a last resort, use a placeholder image
-          debugPrint('Using placeholder image as fallback');
-          return 'https://via.placeholder.com/300x400?text=Book+Image';
-        }
-      }
-
-      // For non-web platforms, use a placeholder image as fallback
+      // As a last resort, use a placeholder image
       debugPrint('Using placeholder image as fallback');
       return 'https://via.placeholder.com/300x400?text=Book+Image';
     }
@@ -296,6 +334,7 @@ class FirestoreService {
     String? category,
     String? location,
     double? rating,
+    Function(double)? onProgress,
   }) async {
     try {
       if (!isUserLoggedIn) {
@@ -303,7 +342,7 @@ class FirestoreService {
       }
 
       // Upload image
-      final imageUrl = await uploadBookImage(imageFile);
+      final imageUrl = await uploadBookImage(imageFile, onProgress: onProgress);
       if (imageUrl == null) {
         throw Exception('Failed to upload image');
       }
@@ -564,20 +603,95 @@ class FirestoreService {
     }
   }
 
-  // Add item to cart
-  Future<bool> addToCart(String bookId, {int quantity = 1}) async {
+  // Check if cart collection is accessible
+  Future<bool> isCartCollectionAccessible() async {
     try {
+      if (!isUserLoggedIn) return false;
+
+      final userId = currentUserId!;
+      await cartCollection
+          .where('userId', isEqualTo: userId)
+          .limit(1)
+          .get();
+      return true;
+    } catch (e) {
+      debugPrint('Cart collection is not accessible: $e');
+      return false;
+    }
+  }
+
+  // Add item to cart with improved error handling
+  Future<Map<String, dynamic>> addToCart(String bookId, {int quantity = 1}) async {
+    try {
+      // Validate input
+      if (bookId.isEmpty) {
+        return {
+          'success': false,
+          'error': 'Invalid book ID',
+          'userMessage': 'Unable to add book to cart. Please try again.',
+        };
+      }
+
+      if (quantity <= 0) {
+        return {
+          'success': false,
+          'error': 'Invalid quantity',
+          'userMessage': 'Quantity must be greater than 0.',
+        };
+      }
+
       if (!isUserLoggedIn) {
-        throw Exception('User not logged in');
+        return {
+          'success': false,
+          'error': 'User not logged in',
+          'userMessage': 'Please log in to add items to your cart.',
+        };
       }
 
       final userId = currentUserId!;
+      debugPrint('Adding book $bookId to cart for user $userId');
 
-      // Check if the book exists
+      // Check if cart collection is accessible
+      final cartAccessible = await isCartCollectionAccessible();
+      if (!cartAccessible) {
+        return {
+          'success': false,
+          'error': 'Cart collection not accessible',
+          'userMessage': 'Cart service is currently unavailable. Please try again later.',
+        };
+      }
+
+      // Check if the book exists and is available
       final bookDoc = await booksCollection.doc(bookId).get();
       if (!bookDoc.exists) {
-        throw Exception('Book not found');
+        return {
+          'success': false,
+          'error': 'Book not found',
+          'userMessage': 'This book is no longer available.',
+        };
       }
+
+      final bookData = bookDoc.data() as Map<String, dynamic>;
+
+      // Check if book is available for purchase
+      if (bookData['status'] != null && bookData['status'] != 'available') {
+        return {
+          'success': false,
+          'error': 'Book not available',
+          'userMessage': 'This book is no longer available for purchase.',
+        };
+      }
+
+      // Check if user is trying to add their own book to cart
+      if (bookData['sellerId'] == userId) {
+        return {
+          'success': false,
+          'error': 'Cannot add own book',
+          'userMessage': 'You cannot add your own book to the cart.',
+        };
+      }
+
+      debugPrint('Book validation passed, checking cart...');
 
       // Check if the item is already in the cart
       final cartQuery = await cartCollection
@@ -589,27 +703,70 @@ class FirestoreService {
       if (cartQuery.docs.isNotEmpty) {
         // Update quantity
         final cartItemId = cartQuery.docs.first.id;
-        final currentQuantity = cartQuery.docs.first['quantity'] as int;
+        final cartData = cartQuery.docs.first.data() as Map<String, dynamic>?;
+        final currentQuantity = cartData?['quantity'] as int? ?? 1;
+
+        debugPrint('Book already in cart, updating quantity from $currentQuantity to ${currentQuantity + quantity}');
 
         await cartCollection.doc(cartItemId).update({
           'quantity': currentQuantity + quantity,
           'updatedAt': FieldValue.serverTimestamp(),
         });
+
+        return {
+          'success': true,
+          'message': 'Cart updated',
+          'userMessage': 'Book quantity updated in cart.',
+          'isUpdate': true,
+          'newQuantity': currentQuantity + quantity,
+        };
       } else {
         // Add new item to cart
-        await cartCollection.add({
+        debugPrint('Adding new item to cart...');
+
+        final cartData = {
           'userId': userId,
           'bookId': bookId,
           'quantity': quantity,
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
-        });
-      }
+          // Store some book info for easier access
+          'bookTitle': bookData['title'] ?? 'Unknown Title',
+          'bookPrice': bookData['price'] ?? 0.0,
+          'bookImageUrl': bookData['imageUrl'],
+        };
 
-      return true;
+        await cartCollection.add(cartData);
+
+        debugPrint('Successfully added book to cart');
+
+        return {
+          'success': true,
+          'message': 'Added to cart',
+          'userMessage': 'Book added to cart successfully!',
+          'isUpdate': false,
+          'quantity': quantity,
+        };
+      }
     } catch (e) {
       debugPrint('Error adding to cart: $e');
-      return false;
+
+      // Provide specific error messages based on the error type
+      String userMessage = 'Unable to add book to cart. Please try again.';
+
+      if (e.toString().contains('permission-denied')) {
+        userMessage = 'Permission denied. Please check your account permissions.';
+      } else if (e.toString().contains('network')) {
+        userMessage = 'Network error. Please check your internet connection.';
+      } else if (e.toString().contains('unavailable')) {
+        userMessage = 'Service temporarily unavailable. Please try again later.';
+      }
+
+      return {
+        'success': false,
+        'error': e.toString(),
+        'userMessage': userMessage,
+      };
     }
   }
 
@@ -784,6 +941,98 @@ class FirestoreService {
       return null;
     }
   }
+  
+  // Create order with payment method
+  Future<String?> createOrderWithPaymentMethod(String shippingAddress, String paymentMethod) async {
+    try {
+      if (!isUserLoggedIn) {
+        throw Exception('User not logged in');
+      }
+
+      final userId = currentUserId!;
+
+      // Get cart items with details
+      final cartItems = await getCartItemsWithDetails();
+      if (cartItems.isEmpty) {
+        throw Exception('Cart is empty');
+      }
+
+      // Calculate total amount
+      double totalAmount = 0;
+      for (final item in cartItems) {
+        totalAmount += (item['price'] as num).toDouble() * item['quantity'];
+      }
+
+      // Create order
+      final orderRef = await ordersCollection.add({
+        'userId': userId,
+        'totalAmount': totalAmount,
+        'status': 'pending',
+        'shippingAddress': shippingAddress,
+        'paymentMethod': paymentMethod,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      // Create order items subcollection
+      for (final item in cartItems) {
+        await orderRef.collection('items').add({
+          'bookId': item['bookId'],
+          'quantity': item['quantity'],
+          'price': item['price'],
+          'title': item['title'],
+          'author': item['author'],
+          'imageUrl': item['imageUrl'],
+          'sellerId': item['sellerId'] ?? '',
+        });
+        
+        // Notify the book owner about the order
+        if (item.containsKey('sellerId') && item['sellerId'] != null) {
+          final sellerId = item['sellerId'] as String;
+          final bookTitle = item['title'] as String;
+          
+          await sendNotificationToUser(
+            sellerId,
+            'New Order Received',
+            'Someone has ordered your book "$bookTitle". Order ID: ${orderRef.id}',
+            NotificationType.success,
+          );
+        }
+      }
+
+      // Clear cart
+      await clearCart();
+
+      return orderRef.id;
+    } catch (e) {
+      debugPrint('Error creating order with payment method: $e');
+      return null;
+    }
+  }
+  
+  // Send notification to a specific user
+  Future<bool> sendNotificationToUser(
+    String userId, 
+    String title, 
+    String message, 
+    NotificationType type
+  ) async {
+    try {
+      // Create notification in Firestore
+      await _firestore.collection('notifications').add({
+        'userId': userId,
+        'title': title,
+        'message': message,
+        'type': type.toString().split('.').last,
+        'isRead': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      
+      return true;
+    } catch (e) {
+      debugPrint('Error sending notification to user: $e');
+      return false;
+    }
+  }
 
   // Get user orders
   Stream<QuerySnapshot> getUserOrders() {
@@ -926,5 +1175,81 @@ class FirestoreService {
     return statuses[random];
   }
 
+  // Test cart functionality
+  Future<Map<String, dynamic>> testCartFunctionality() async {
+    try {
+      if (!isUserLoggedIn) {
+        return {
+          'success': false,
+          'error': 'User not logged in',
+          'message': 'Please log in to test cart functionality',
+        };
+      }
+
+      final userId = currentUserId!;
+      debugPrint('Testing cart functionality for user: $userId');
+
+      // Test 1: Check if cart collection is accessible
+      final cartAccessible = await isCartCollectionAccessible();
+      if (!cartAccessible) {
+        return {
+          'success': false,
+          'error': 'Cart collection not accessible',
+          'message': 'Cart collection is not accessible. Check Firestore rules.',
+        };
+      }
+
+      // Test 2: Try to read from cart collection
+      try {
+        final cartQuery = await cartCollection
+            .where('userId', isEqualTo: userId)
+            .limit(1)
+            .get();
+        debugPrint('Cart read test successful. Found ${cartQuery.docs.length} items.');
+      } catch (e) {
+        return {
+          'success': false,
+          'error': 'Cart read failed',
+          'message': 'Cannot read from cart collection: $e',
+        };
+      }
+
+      // Test 3: Try to write to cart collection (create a test item)
+      try {
+        final testCartItem = {
+          'userId': userId,
+          'bookId': 'test-book-id',
+          'quantity': 1,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'isTest': true, // Mark as test item
+        };
+
+        final docRef = await cartCollection.add(testCartItem);
+        debugPrint('Cart write test successful. Created test item: ${docRef.id}');
+
+        // Clean up test item
+        await cartCollection.doc(docRef.id).delete();
+        debugPrint('Test item cleaned up successfully');
+      } catch (e) {
+        return {
+          'success': false,
+          'error': 'Cart write failed',
+          'message': 'Cannot write to cart collection: $e',
+        };
+      }
+
+      return {
+        'success': true,
+        'message': 'Cart functionality test passed. All operations work correctly.',
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'error': 'Test failed',
+        'message': 'Cart functionality test failed: $e',
+      };
+    }
+  }
 
 }

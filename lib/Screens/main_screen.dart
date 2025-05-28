@@ -7,6 +7,8 @@ import 'sell.dart';
 import 'profile_screen.dart';
 
 class MainScreen extends StatefulWidget {
+  static const routeName = '/main';
+  
   const MainScreen({super.key});
 
   @override
@@ -42,6 +44,15 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: _screens[_notchBottomBarController.index],
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          // Navigate to book selection screen
+          Navigator.of(context).pushNamed('/book-selection');
+        },
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        tooltip: 'Add Multiple Books',
+        child: const Icon(Icons.add_shopping_cart, color: Colors.white),
+      ),
       bottomNavigationBar: AnimatedBuilder(
         animation: Listenable.merge([_notchBottomBarController]),
         builder: (context, _) {
@@ -54,7 +65,7 @@ class _MainScreenState extends State<MainScreen> {
             bottomBarWidth: 500,
             durationInMilliSeconds: 300,
             kIconSize: 24.0,
-            kBottomRadius: 28.0,
+            kBottomRadius: 30.0,
             bottomBarItems: const [
               BottomBarItem(
                 inActiveItem: Icon(

@@ -4,6 +4,7 @@ import '../../services/firestore_service.dart';
 import '../../services/auth_service.dart';
 import '../../Widgets/shimmer_loading.dart';
 import '../sell.dart';
+import '../book_details_screen.dart';
 
 class ListingsScreen extends StatefulWidget {
   const ListingsScreen({super.key});
@@ -282,27 +283,50 @@ class _ListingsScreenState extends State<ListingsScreen> with SingleTickerProvid
             borderRadius: BorderRadius.circular(12),
           ),
           elevation: 2,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
+          child: InkWell(
+            onTap: () => _navigateToBookDetails(doc.id),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Book cover
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
-                    book['imageUrl'] ?? 'https://via.placeholder.com/150',
-                    width: 80,
-                    height: 120,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        width: 80,
-                        height: 120,
-                        color: Colors.grey[300],
-                        child: const Icon(Icons.book, color: Colors.grey),
-                      );
-                    },
+                // Book cover with hero animation
+                Hero(
+                  tag: 'book-image-${doc.id}',
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      book['imageUrl'] ?? 'https://via.placeholder.com/150',
+                      width: 80,
+                      height: 120,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Container(
+                          width: 80,
+                          height: 120,
+                          color: Colors.grey[200],
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              value: loadingProgress.expectedTotalBytes != null
+                                  ? loadingProgress.cumulativeBytesLoaded /
+                                    loadingProgress.expectedTotalBytes!
+                                  : null,
+                              strokeWidth: 2,
+                            ),
+                          ),
+                        );
+                      },
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          width: 80,
+                          height: 120,
+                          color: Colors.grey[300],
+                          child: const Icon(Icons.book, color: Colors.grey),
+                        );
+                      },
+                    ),
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -381,9 +405,7 @@ class _ListingsScreenState extends State<ListingsScreen> with SingleTickerProvid
                             ),
                           ] else ...[
                             TextButton(
-                              onPressed: () {
-                                // View details
-                              },
+                              onPressed: () => _navigateToBookDetails(doc.id),
                               child: const Text('View Details'),
                             ),
                           ],
@@ -393,10 +415,20 @@ class _ListingsScreenState extends State<ListingsScreen> with SingleTickerProvid
                   ),
                 ),
               ],
+              ),
             ),
           ),
         );
       },
     );
+  }
+
+  void _navigateToBookDetails(String bookId) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => BookDetailsScreen(bookId: bookId),
+      ),
+    ).then((_) => _loadListings()); // Refresh listings when returning from details
   }
 }

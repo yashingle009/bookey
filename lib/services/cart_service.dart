@@ -69,12 +69,13 @@ class CartService extends ChangeNotifier {
       _error = null;
       notifyListeners();
       
-      final success = await _firestoreService.addToCart(bookId, quantity: quantity);
+      final result = await _firestoreService.addToCart(bookId, quantity: quantity);
+      final success = result['success'] as bool? ?? false;
       
       if (success) {
         await loadCartItems();
       } else {
-        _error = 'Failed to add item to cart';
+        _error = result['userMessage'] as String? ?? 'Failed to add item to cart';
         _isLoading = false;
         notifyListeners();
       }

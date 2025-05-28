@@ -75,14 +75,14 @@ class _BookDetailsScreenState extends State<BookDetailsScreen> {
     }
   }
 
-  Future<void> _addToCart() async {
+  Future<void> _bookNow() async {
     if (!_firestoreService.isUserLoggedIn) {
       // Show login dialog
       final result = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Login Required'),
-          content: const Text('You need to login to add items to your cart.'),
+          content: const Text('You need to login to book this item.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
@@ -106,39 +106,179 @@ class _BookDetailsScreenState extends State<BookDetailsScreen> {
       return;
     }
 
+    // Validate that we have a book with an ID
+    if (_book == null || _book!['id'] == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to book this item. Book information is missing.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _error = null;
     });
 
     try {
-      final bookId = _book!['id'];
-      final success = await _firestoreService.addToCart(bookId);
+      final bookId = _book!['id'] as String;
+      debugPrint('Attempting to book $bookId');
+
+      // Show payment method selection dialog
+      final paymentMethod = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Select Payment Method'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.credit_card),
+                title: const Text('Credit Card'),
+                onTap: () => Navigator.of(context).pop('credit_card'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.account_balance_wallet),
+                title: const Text('Digital Wallet'),
+                onTap: () => Navigator.of(context).pop('digital_wallet'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.money),
+                title: const Text('Cash on Delivery'),
+                onTap: () => Navigator.of(context).pop('cod'),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      if (paymentMethod == null) {
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+
+      final result = await _firestoreService.addToCart(bookId);
 
       if (!mounted) return;
 
+      final success = result['success'] as bool? ?? false;
+      final userMessage = result['userMessage'] as String? ?? 'Unknown error occurred';
+
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Book added to cart'),
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(child: Text('Book reserved successfully! Payment method: ${paymentMethod == 'credit_card' ? 'Credit Card' : paymentMethod == 'digital_wallet' ? 'Digital Wallet' : 'Cash on Delivery'}')),
+              ],
+            ),
             backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+            action: SnackBarAction(
+              label: 'VIEW DETAILS',
+              textColor: Colors.white,
+              onPressed: () {
+                // TODO: Navigate to booking details screen
+                debugPrint('Navigate to booking details');
+              },
+            ),
           ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to add book to cart'),
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(child: Text(userMessage)),
+              ],
+            ),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'RETRY',
+              textColor: Colors.white,
+              onPressed: _bookNow,
+            ),
           ),
         );
       }
     } catch (e) {
       if (!mounted) return;
 
+      debugPrint('Exception in _addToCart: $e');
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error adding book to cart: $e'),
+          content: Row(
+            children: [
+              const Icon(Icons.error_outline, color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Unexpected error: ${e.toString()}'),
+              ),
+            ],
+          ),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'RETRY',
+            textColor: Colors.white,
+            onPressed: _bookNow,
+          ),
+        ),
+      );
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _testCartFunctionality() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final result = await _firestoreService.testCartFunctionality();
+
+      if (!mounted) return;
+
+      final success = result['success'] as bool? ?? false;
+      final message = result['message'] as String? ?? 'Unknown result';
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(
+                success ? Icons.check_circle : Icons.error_outline,
+                color: Colors.white,
+              ),
+              const SizedBox(width: 8),
+              Expanded(child: Text(message)),
+            ],
+          ),
+          backgroundColor: success ? Colors.green : Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Test failed: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
         ),
       );
     } finally {
@@ -187,26 +327,47 @@ class _BookDetailsScreenState extends State<BookDetailsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Book Image
+                      // Book Image with Hero animation
                       Center(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Image.network(
-                            _book?['imageUrl'] ?? 'https://via.placeholder.com/150',
-                            height: 300,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                height: 300,
-                                width: 200,
-                                color: Colors.grey[300],
-                                child: const Icon(
-                                  Icons.image_not_supported,
-                                  size: 50,
-                                  color: Colors.grey,
-                                ),
-                              );
-                            },
+                        child: Hero(
+                          tag: 'book-image-${_book?['id'] ?? 'default'}',
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.network(
+                              _book?['imageUrl'] ?? 'https://via.placeholder.com/150',
+                              height: 300,
+                              width: 200,
+                              fit: BoxFit.cover,
+                              loadingBuilder: (context, child, loadingProgress) {
+                                if (loadingProgress == null) return child;
+                                return Container(
+                                  height: 300,
+                                  width: 200,
+                                  color: Colors.grey[200],
+                                  child: Center(
+                                    child: CircularProgressIndicator(
+                                      value: loadingProgress.expectedTotalBytes != null
+                                          ? loadingProgress.cumulativeBytesLoaded /
+                                            loadingProgress.expectedTotalBytes!
+                                          : null,
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                );
+                              },
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  height: 300,
+                                  width: 200,
+                                  color: Colors.grey[300],
+                                  child: const Icon(
+                                    Icons.image_not_supported,
+                                    size: 50,
+                                    color: Colors.grey,
+                                  ),
+                                );
+                              },
+                            ),
                           ),
                         ),
                       ),
@@ -359,20 +520,43 @@ class _BookDetailsScreenState extends State<BookDetailsScreen> {
                         const SizedBox(height: 24),
                       ],
 
+                      // Test Cart Functionality Button (for debugging)
+                      if (_firestoreService.isUserLoggedIn) ...[
+                        SizedBox(
+                          width: double.infinity,
+                          height: 40,
+                          child: OutlinedButton(
+                            onPressed: _isLoading ? null : _testCartFunctionality,
+                            child: const Text(
+                              'Test Cart Functionality',
+                              style: TextStyle(fontSize: 14),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+
                       // Add to Cart Button
                       SizedBox(
                         width: double.infinity,
                         height: 50,
                         child: ElevatedButton(
-                          onPressed: _isLoading ? null : _addToCart,
+                          onPressed: _isLoading ? null : _bookNow,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Theme.of(context).primaryColor,
                             foregroundColor: Colors.white,
                           ),
                           child: _isLoading
-                              ? const CircularProgressIndicator(color: Colors.white)
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
                               : const Text(
-                                  'Add to Cart',
+                                  'BOOK NOW',
                                   style: TextStyle(fontSize: 16),
                                 ),
                         ),

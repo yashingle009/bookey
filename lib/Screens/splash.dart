@@ -27,7 +27,7 @@ with SingleTickerProviderStateMixin {
     _animationController.forward();
 
     // Wait for animation to complete before checking auth state
-    Timer(const Duration(milliseconds: 3000), () {
+    Timer(const Duration(milliseconds: 2000), () {
       if (mounted) {
         _checkAuthState();
       }

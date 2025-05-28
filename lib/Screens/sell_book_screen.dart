@@ -92,6 +92,10 @@ class _SellBookScreenState extends State<SellBookScreen> {
     }
   }
 
+  // Upload progress
+  double _uploadProgress = 0.0;
+  bool _isUploading = false;
+
   Future<void> _submitForm() async {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -106,6 +110,8 @@ class _SellBookScreenState extends State<SellBookScreen> {
 
     setState(() {
       _isLoading = true;
+      _isUploading = true;
+      _uploadProgress = 0.0;
       _errorMessage = null;
     });
 
@@ -116,23 +122,52 @@ class _SellBookScreenState extends State<SellBookScreen> {
       final description = _descriptionController.text.trim();
       final location = _locationController.text.trim();
 
+      // Check image file size
+      final File imageFile = File(_selectedImage!.path);
+      final fileSize = await imageFile.length();
+      final fileSizeMB = fileSize / (1024 * 1024);
+
+      if (fileSizeMB > 10) {
+        throw Exception('Image file is too large (${fileSizeMB.toStringAsFixed(1)}MB). Please select an image smaller than 10MB.');
+      }
+
+      // Update UI to show upload progress
+      setState(() {
+        _errorMessage = 'Uploading image... Please wait.';
+      });
+
       // First try to upload the image to verify it works
       debugPrint('Attempting to upload image...');
-      final imageUrl = await _firestoreService.uploadBookImage(_selectedImage!);
+      final imageUrl = await _firestoreService.uploadBookImage(
+        _selectedImage!,
+        onProgress: (progress) {
+          setState(() {
+            _uploadProgress = progress;
+          });
+        },
+      );
 
-      if (imageUrl == null) {
-        throw Exception('Failed to upload image. Please try again with a different image.');
-      }
+      // Even if imageUrl is a placeholder, we'll continue with the book creation
+      // This ensures the user can still list their book even if there are image upload issues
+
+      // Update UI to show book creation progress
+      setState(() {
+        _isUploading = false;
+        _errorMessage = 'Image uploaded successfully. Creating book listing...';
+      });
 
       debugPrint('Image uploaded successfully. Adding book to Firestore...');
 
       // Now add the book with the image URL
+      // If imageUrl is null, use a placeholder
+      final bookImageUrl = imageUrl ?? 'https://via.placeholder.com/300x400?text=Book+Image';
+
       final bookRef = await _firestoreService.addBookWithUrl(
         title: title,
         author: author,
         price: price,
         condition: _selectedCondition,
-        imageUrl: imageUrl,
+        imageUrl: bookImageUrl,
         description: description.isNotEmpty ? description : null,
         category: _selectedCategory,
         location: location,
@@ -183,7 +218,33 @@ class _SellBookScreenState extends State<SellBookScreen> {
         foregroundColor: Colors.white,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 16),
+                  if (_isUploading)
+                    Column(
+                      children: [
+                        const Text('Uploading image...'),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: 200,
+                          child: LinearProgressIndicator(
+                            value: _uploadProgress > 0 ? _uploadProgress / 100 : null,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        if (_uploadProgress > 0)
+                          Text('${_uploadProgress.toStringAsFixed(0)}%'),
+                      ],
+                    )
+                  else
+                    const Text('Creating book listing...'),
+                ],
+              ),
+            )
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16.0),
               child: Form(

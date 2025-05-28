@@ -13,6 +13,10 @@ import 'Screens/auth/forgot_password_screen.dart';
 import 'Screens/main_screen.dart';
 import 'Screens/cart_screen.dart';
 import 'Screens/firestore_books_screen.dart';
+import 'Screens/checkout/order_screen.dart';
+import 'Screens/checkout/order_confirmation_screen.dart';
+import 'Screens/checkout/book_selection_screen.dart';
+import 'Screens/profile/orders_screen.dart';
 
 void main() async {
   // Ensure Flutter is initialized
@@ -61,6 +65,10 @@ class MyApp extends StatelessWidget {
             '/main': (context) => const MainScreen(),
             '/books': (context) => const FirestoreBooksScreen(),
             CartScreen.routeName: (context) => const CartScreen(),
+            '/order': (context) => const OrderScreen(),
+            '/order-confirmation': (context) => OrderConfirmationScreen.create(context),
+            '/profile/orders': (context) => const OrdersScreen(),
+            '/book-selection': (context) => const BookSelectionScreen(),
           },
         ),
       ),

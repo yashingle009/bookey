@@ -7,9 +7,7 @@ import '../Widgets/filter_bottom_sheet.dart';
 import '../Widgets/custom_app_bar.dart';
 import '../Widgets/shimmer_loading.dart';
 import '../utils/animations.dart';
-import '../utils/page_transitions.dart';
 import '../services/firestore_service.dart';
-import 'animated_book_detail_screen.dart';
 import 'book_details_screen.dart';
 
 class AnimatedBuy extends StatefulWidget {
@@ -85,7 +83,9 @@ class _AnimatedBuyState extends State<AnimatedBuy> with SingleTickerProviderStat
     },
   ];
 
-  // Sample data for books (will be replaced with Firestore data)
+  // Sample data for books - kept for reference but not used anymore
+  // We now use Firestore data instead
+  /*
   final List<Map<String, dynamic>> _sampleBooks = [
     {
       'title': 'The Silent Patient',
@@ -220,6 +220,7 @@ class _AnimatedBuyState extends State<AnimatedBuy> with SingleTickerProviderStat
       'publishDate': '1997-01-01',
     },
   ];
+  */
 
   List<DocumentSnapshot> get _filteredBooks {
     // If we're searching, use the search results
@@ -233,6 +234,13 @@ class _AnimatedBuyState extends State<AnimatedBuy> with SingleTickerProviderStat
     }
 
     List<DocumentSnapshot> result = List.from(_allBooks);
+
+    // Filter by status (only show available books)
+    result = result.where((doc) {
+      final book = doc.data() as Map<String, dynamic>;
+      // If status is missing, assume it's available
+      return book['status'] == null || book['status'] == 'available';
+    }).toList();
 
     // Apply category filter
     if (_filters['categories'].isNotEmpty) {
@@ -373,6 +381,9 @@ class _AnimatedBuyState extends State<AnimatedBuy> with SingleTickerProviderStat
     });
   }
 
+  // This method is kept for future use with sample data
+  // Currently using _navigateToBookDetails with DocumentSnapshot instead
+  /*
   void _handleBookTap(Map<String, dynamic> book, {String? heroTag}) {
     Navigator.push(
       context,
@@ -384,6 +395,7 @@ class _AnimatedBuyState extends State<AnimatedBuy> with SingleTickerProviderStat
       ),
     );
   }
+  */
 
   void _navigateToBookDetails(DocumentSnapshot doc) {
     // Check if user is logged in
@@ -826,6 +838,22 @@ class _AnimatedBuyState extends State<AnimatedBuy> with SingleTickerProviderStat
                                               height: 150,
                                               width: double.infinity,
                                               fit: BoxFit.cover,
+                                              loadingBuilder: (context, child, loadingProgress) {
+                                                if (loadingProgress == null) return child;
+                                                return Container(
+                                                  height: 150,
+                                                  color: Colors.grey[200],
+                                                  child: Center(
+                                                    child: CircularProgressIndicator(
+                                                      value: loadingProgress.expectedTotalBytes != null
+                                                          ? loadingProgress.cumulativeBytesLoaded /
+                                                            loadingProgress.expectedTotalBytes!
+                                                          : null,
+                                                      strokeWidth: 2,
+                                                    ),
+                                                  ),
+                                                );
+                                              },
                                               errorBuilder: (context, error, stackTrace) {
                                                 return Container(
                                                   height: 150,
